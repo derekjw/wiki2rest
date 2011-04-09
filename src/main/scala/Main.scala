@@ -35,11 +35,16 @@ class WikiTextParser extends Parsers {
 
   def para = rep1(not(code | heading | (lf ~ lf)) ~> multiline) ^^ { Para(_) }
 
-  def inline(limit: Parser[String]): Parser[Inline] = link | target | tag | text(limit | "[[")
+  def inline(limit: Parser[String]): Parser[Inline] = link | target | tag | html | text(limit | tag ^^ (_.text) | html ^^ (_.html))
 
   def multiline: Parser[MultiLine] = inline("\n") | lf
 
   def text(limit: Parser[String]) = rep1(not(limit) ~> chr) ^^ { x => Text(x) }
+
+  def html = ("</" | "<") ~ ("span" | "div") ~ opt(text(">")) ~ ">" ^^ {
+    case l ~ e ~ Some(Text(t)) ~ r => HTML(l+e+t+r)
+    case l ~ e ~ None ~ r => HTML(l+e+r)
+  }
 
   def target = "[[#" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Target(x) }
 
@@ -93,6 +98,7 @@ object Doc {
     case Link(u,s) => s
     case Tag(s) => s
     case Target(s) => "#"+s
+    case HTML(s) => ""
   }
 
   def text(in: Seq[Doc]): String = ("" /: in)(_ + text(_))
@@ -106,6 +112,7 @@ object Doc {
     case Link(u,s) => "[["+u+"|"+s+"]]"
     case Tag(s) => "[["+s+"]]"
     case Target(s) => "[[#"+s+"]]"
+    case HTML(s) => s
   }
 
   def wiki(in: Seq[Doc]): String = ("" /: in)(_ + wiki(_))
@@ -128,6 +135,7 @@ object Doc {
     case Link(u,s) => "`"+s+" <"+u+">`_"
     case Tag(s) => if (s == "toc") "" else "[["+s+"]]"
     case Target(s) => "" //"_`"+s+"`"
+    case HTML(s) => ""
   }
 
   def reSt(in: Seq[Doc]): String = {
@@ -153,3 +161,4 @@ case class Heading(level: Int, contents: List[Inline]) extends Block
 case class Link(uri: String, text: String) extends Inline
 case class Tag(text: String) extends Inline
 case class Target(text: String) extends Inline
+case class HTML(html: String) extends Inline
