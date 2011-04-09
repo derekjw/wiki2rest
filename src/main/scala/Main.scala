@@ -29,8 +29,8 @@ class WikiTextParser extends Parsers {
     rep1(inline(("="*l))) <~ repN(l, '=') ^^ { x => Heading(l, x) }
   }
 
-  def code = "[[code" ~ opt(" format=\"scala\"") ~ "]]" ~ lf ~> rep1(text("[[code]]" | "\n") | lf) <~ "[[code]]" ~ lf ^^ { x =>
-    Code(x.map(Doc.text).mkString)
+  def code = ("[[code" ~> opt(" format=\"" ~> text("\"") <~ "\"") <~ "]]") ~ (lf ~> rep1(text("[[code]]" | "\n") | lf) <~ "[[code]]" ~ lf) ^^ {
+    case l ~ t => Code(l.map(_.text), t.map(Doc.text).mkString)
   }
 
   def para = rep1(not(code | heading | (lf ~ lf)) ~> multiline) ^^ { Para(_) }
@@ -91,7 +91,7 @@ class WikiTextParser extends Parsers {
 object Doc {
   def text(in: Doc): String = in match {
     case Para(c) => text(c)
-    case Code(s) => s
+    case Code(l,s) => s
     case Heading(l,c) => text(c)
     case Text(s) => s
     case LF => "\n"
@@ -105,7 +105,8 @@ object Doc {
 
   def wiki(in: Doc): String = in match {
     case Para(c) => wiki(c)
-    case Code(s) => "[[code format=\"scala\"]]\n"+s+"[[code]]\n"
+    case Code(Some(l), s) => "[[code format=\""+l+"\"]]\n"+s+"[[code]]\n"
+    case Code(None, s) => "[[code]]\n"+s+"[[code]]\n"
     case Heading(l,c) => ("="*l)+wiki(c)+("="*l)
     case Text(s) => s
     case LF => "\n"
@@ -119,7 +120,8 @@ object Doc {
 
   def reSt(in: Doc): String = in match {
     case Para(c) => reSt(c)+"\n"
-    case Code(s) => "::\n\n"+s.lines.map(l => "  "+l+"\n").mkString+"\n"
+    case Code(Some(l), s) => ".. code-block:: "+l+"\n\n"+s.lines.map(x => "  "+x+"\n").mkString+"\n"
+    case Code(None, s) => "::\n\n"+s.lines.map(x => "  "+x+"\n").mkString+"\n"
     case Heading(l,c) =>
       val hchr = l match {
         case 1 => "="
@@ -156,7 +158,7 @@ sealed trait Inline extends MultiLine
 case class Para(contents: List[MultiLine]) extends Block
 case class Text(text: String) extends Inline
 case object LF extends MultiLine with Block
-case class Code(text: String) extends Block
+case class Code(lang: Option[String], text: String) extends Block
 case class Heading(level: Int, contents: List[Inline]) extends Block
 case class Link(uri: String, text: String) extends Inline
 case class Tag(text: String) extends Inline
