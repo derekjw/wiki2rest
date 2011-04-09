@@ -24,10 +24,10 @@ class WikiTextParserSpec extends WordSpec with ShouldMatchers {
 
   "parsing Link" should {
     "succeed when simple" in {
-      parser(parser.link, "[[http://example.org|Example Link]]") should equal(Link("http://example.org", "Example Link"))
+      parser(parser.link, "[[http://example.org|Example Link]]") should equal(Link("http://example.org", Some("Example Link")))
     }
     "succed when inline" in {
-      parser(parser.para, "This is a test of [[http://example.org|Example Link]] is a test") should equal(Para(List(Text("This is a test of "), Link("http://example.org", "Example Link"), Text(" is a test"))))
+      parser(parser.para, "This is a test of [[http://example.org|Example Link]] is a test") should equal(Para(List(Text("This is a test of "), Link("http://example.org", Some("Example Link")), Text(" is a test"))))
     }
   }
 

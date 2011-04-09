@@ -35,11 +35,15 @@ class WikiTextParser extends Parsers {
 
   def para = rep1(not(code | heading | (lf ~ lf)) ~> multiline) ^^ { Para(_) }
 
-  def inline(limit: Parser[String]): Parser[Inline] = link | target | tag | html | text(limit | tag ^^ (_.text) | html ^^ (_.html))
+  def inline(limit: Parser[Any]): Parser[Inline] =  target | link | html | emphtext | boldtext | text(limit | link | target | html | emphtext | boldtext)
 
   def multiline: Parser[MultiLine] = inline("\n") | lf
 
-  def text(limit: Parser[String]) = rep1(not(limit) ~> chr) ^^ { x => Text(x) }
+  def emphtext = "//" ~> rep1(not("//") ~> chr) <~ "//" ^^ { x => EmphText(x) }
+
+  def boldtext = "**" ~> rep1(not("**") ~> chr) <~ "**" ^^ { x => BoldText(x) }
+
+  def text(limit: Parser[Any]) = rep1(not(limit) ~> chr) ^^ { x => Text(x) }
 
   def html = ("</" | "<") ~ ("span" | "div") ~ opt(text(">")) ~ ">" ^^ {
     case l ~ e ~ Some(Text(t)) ~ r => HTML(l+e+t+r)
@@ -48,11 +52,10 @@ class WikiTextParser extends Parsers {
 
   def target = "[[#" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Target(x) }
 
-  def link = "[[" ~> rep1(not("]]" | '|') ~> chr) ~ '|' ~ rep1(not("]]") ~> chr) <~ "]]" ^^ {
-    case uri ~ '|' ~ text => Link(uri, text)
+  def link = "[[" ~> rep1(not("]]" | '|') ~> chr) ~ opt('|' ~> rep1(not("]]") ~> chr)) <~ "]]" ^^ {
+    case uri ~ Some(text) => Link(uri, Some(text))
+    case uri ~ None => Link(uri, None)
   }
-
-  def tag = "[[" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Tag(x) }
 
   def chr = elem("chr", c => (!c.isControl || c == '\u0009'))
 
@@ -94,9 +97,10 @@ object Doc {
     case Code(l,s) => s
     case Heading(l,c) => text(c)
     case Text(s) => s
+    case EmphText(s) => s
+    case BoldText(s) => s
     case LF => "\n"
-    case Link(u,s) => s
-    case Tag(s) => s
+    case Link(u,s) => u
     case Target(s) => "#"+s
     case HTML(s) => ""
   }
@@ -109,9 +113,11 @@ object Doc {
     case Code(None, s) => "[[code]]\n"+s+"[[code]]\n"
     case Heading(l,c) => ("="*l)+wiki(c)+("="*l)
     case Text(s) => s
+    case EmphText(s) => "//"+s+"//"
+    case BoldText(s) => "**"+s+"**"
     case LF => "\n"
-    case Link(u,s) => "[["+u+"|"+s+"]]"
-    case Tag(s) => "[["+s+"]]"
+    case Link(u,Some(s)) => "[["+u+"|"+s+"]]"
+    case Link(u,None) => "[["+u+"]]"
     case Target(s) => "[[#"+s+"]]"
     case HTML(s) => s
   }
@@ -133,9 +139,12 @@ object Doc {
       val s = reSt(c)
       s+"\n"+(hchr*s.length)+"\n\n"
     case Text(s) => s
+    case EmphText(s) => "*"+s+"*"
+    case BoldText(s) => "**"+s+"**"
     case LF => "\n"
-    case Link(u,s) => "`"+s+" <"+u+">`_"
-    case Tag(s) => if (s == "toc") "" else "[["+s+"]]"
+    case Link("toc", None) => ""
+    case Link(u,Some(s)) => "`"+s+" <"+u+">`_"
+    case Link(u,None) => "`<"+u+">`_"
     case Target(s) => "" //"_`"+s+"`"
     case HTML(s) => ""
   }
@@ -162,10 +171,14 @@ sealed trait Inline extends MultiLine
 
 case class Para(contents: List[MultiLine]) extends Block
 case class Text(text: String) extends Inline
+case class EmphText(text: String) extends Inline
+case class BoldText(text: String) extends Inline
+case class BList(contents: List[ListItem]) extends Block
+case class NList(contents: List[ListItem]) extends Block
+case class ListItem(contents: List[Inline]) extends Block
 case object LF extends MultiLine with Block
 case class Code(lang: Option[String], text: String) extends Block
 case class Heading(level: Int, contents: List[Inline]) extends Block
-case class Link(uri: String, text: String) extends Inline
-case class Tag(text: String) extends Inline
+case class Link(uri: String, text: Option[String]) extends Inline
 case class Target(text: String) extends Inline
 case class HTML(html: String) extends Inline
