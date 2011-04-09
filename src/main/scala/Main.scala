@@ -120,7 +120,7 @@ object Doc {
 
   def reSt(in: Doc): String = in match {
     case Para(c) => reSt(c)+"\n"
-    case Code(Some(l), s) => ".. code-block:: "+l+"\n\n"+s.lines.map(x => "  "+x+"\n").mkString+"\n"
+    case Code(Some(l), s) => ".. code-block:: "+reStLang(l)+"\n\n"+s.lines.map(x => "  "+x+"\n").mkString+"\n"
     case Code(None, s) => "::\n\n"+s.lines.map(x => "  "+x+"\n").mkString+"\n"
     case Heading(l,c) =>
       val hchr = l match {
@@ -147,6 +147,11 @@ object Doc {
       else cleanLF(cleaned)
     }
     cleanLF(("" /: in)(_ + reSt(_)))
+  }
+
+  def reStLang(in: String) = in match {
+    case "java5" => "java"
+    case s => s
   }
 }
 
