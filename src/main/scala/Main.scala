@@ -21,37 +21,39 @@ object Main extends App {
 class WikiTextParser extends Parsers {
   type Elem = Char
 
-  def document = rep(lf | h5 | h4 | h3 | h2 | h1 | code | para)
+  def document = rep(block)
 
-  def h1 = heading(1) ^^ { x => Heading(1, x) }
-  def h2 = heading(2) ^^ { x => Heading(2, x) }
-  def h3 = heading(3) ^^ { x => Heading(3, x) }
-  def h4 = heading(4) ^^ { x => Heading(4, x) }
-  def h5 = heading(5) ^^ { x => Heading(5, x) }
+  def block: Parser[Block] = lf | heading | code | para
 
-  def heading(level: Int) = repN(level, '=') ~> rep1(not("=") ~> chr) <~ repN(level, '=')
+  def heading = (rep1('=') ^^ (_.length)) >> { l =>
+    rep1(inline(("="*l))) <~ repN(l, '=') ^^ { x => Heading(l, x) }
+  }
 
-  def para = rep1(not(code | h5 | h4 | h3 | h2 | h1 | (lf ~ lf)) ~> (text | link | target | tag | lf)) ^^ { Para(_) }
+  def code = "[[code" ~ opt(" format=\"scala\"") ~ "]]" ~ lf ~> rep1(text("[[code]]" | "\n") | lf) <~ "[[code]]" ~ lf ^^ { x =>
+    Code(x.map(Doc.text).mkString)
+  }
 
-  def text = rep1(not("[[") ~> chr) ^^ { x => Text(x) }
+  def para = rep1(not(code | heading | (lf ~ lf)) ~> multiline) ^^ { Para(_) }
 
-  def target = block('#' ~> rep1(not("]]") ~> chr)) ^^ { x => Target(x) }
+  def inline(limit: Parser[String]): Parser[Inline] = link | target | tag | text(limit | "[[")
 
-  def tag = block(rep1(not("]]") ~> chr)) ^^ { x => Tag(x) }
+  def multiline: Parser[MultiLine] = inline("\n") | lf
 
-  def link = block(rep1(not("]]" | '|') ~> chr) ~ '|' ~ rep1(not("]]") ~> chr)) ^^ {
+  def text(limit: Parser[String]) = rep1(not(limit) ~> chr) ^^ { x => Text(x) }
+
+  def target = "[[#" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Target(x) }
+
+  def link = "[[" ~> rep1(not("]]" | '|') ~> chr) ~ '|' ~ rep1(not("]]") ~> chr) <~ "]]" ^^ {
     case uri ~ '|' ~ text => Link(uri, text)
   }
 
-  def code = block("code format=\"scala\"") ~ lf ~> rep1(text | lf) <~ block("code") ~ lf ^^ { x => Code(x.map(Doc.text).mkString) }
-
-  def block[T](p: Parser[T]) = '[' ~ '[' ~> p <~ ']' ~ ']'
+  def tag = "[[" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Tag(x) }
 
   def chr = elem("chr", c => !c.isControl)
 
   def lf = '\n' ^^^ LF
 
-  def apply[T](parser: Parser[T], in: Input): T = parser(in) match {
+  def apply[T](parser: Parser[T], in: Input): T = phrase(parser)(in) match {
     case Success(r, n) => r
     case NoSuccess(msg, n) =>
       val pos = n.pos
@@ -84,10 +86,10 @@ class WikiTextParser extends Parsers {
 object Doc {
   def text(in: Doc): String = in match {
     case Para(c) => text(c)
+    case Code(s) => s
+    case Heading(l,c) => text(c)
     case Text(s) => s
     case LF => "\n"
-    case Code(s) => s
-    case Heading(l,s) => s
     case Link(u,s) => s
     case Tag(s) => s
     case Target(s) => "#"+s
@@ -97,10 +99,10 @@ object Doc {
 
   def wiki(in: Doc): String = in match {
     case Para(c) => wiki(c)
+    case Code(s) => "[[code format=\"scala\"]]\n"+s+"[[code]]\n"
+    case Heading(l,c) => ("="*l)+wiki(c)+("="*l)
     case Text(s) => s
     case LF => "\n"
-    case Code(s) => "[[code format=\"scala\"]]\n"+s+"[[code]]\n"
-    case Heading(l,s) => ("="*l)+s+("="*l)
     case Link(u,s) => "[["+u+"|"+s+"]]"
     case Tag(s) => "[["+s+"]]"
     case Target(s) => "[[#"+s+"]]"
@@ -109,34 +111,45 @@ object Doc {
   def wiki(in: Seq[Doc]): String = ("" /: in)(_ + wiki(_))
 
   def reSt(in: Doc): String = in match {
-    case Para(c) => reSt(c)
-    case Text(s) => s
-    case LF => "\n"
-    case Code(s) => "::\n"+s.lines.map(l => "  "+l+"\n").mkString+"\n"
-    case Heading(l,s) =>
+    case Para(c) => reSt(c)+"\n"
+    case Code(s) => "::\n\n"+s.lines.map(l => "  "+l+"\n").mkString+"\n"
+    case Heading(l,c) =>
       val hchr = l match {
         case 1 => "="
         case 2 => "-"
-        case 3 => "*"
-        case 4 => "^"
-        case 5 => "#"
+        case 3 => "^"
+        case 4 => "*"
+        case 5 => "\""
       }
-      s+"\n"+(hchr*s.length)+"\n"
+      val s = reSt(c)
+      s+"\n"+(hchr*s.length)+"\n\n"
+    case Text(s) => s
+    case LF => "\n"
     case Link(u,s) => "`"+s+" <"+u+">`_"
-    case Tag(s) => "[["+s+"]]"
-    case Target(s) => "_`"+s+"`"
+    case Tag(s) => if (s == "toc") "" else "[["+s+"]]"
+    case Target(s) => "" //"_`"+s+"`"
   }
 
-  def reSt(in: Seq[Doc]): String = ("" /: in)(_ + reSt(_))
+  def reSt(in: Seq[Doc]): String = {
+    def cleanLF(s: String): String = {
+      val cleaned = s.replaceAll(" \n", "\n").replaceAll("\n\n\n", "\n\n")
+      if (cleaned == s) s
+      else cleanLF(cleaned)
+    }
+    cleanLF(("" /: in)(_ + reSt(_)))
+  }
 }
 
 sealed trait Doc
+sealed trait Block extends Doc
+sealed trait MultiLine extends Doc
+sealed trait Inline extends MultiLine
 
-case class Para(contents: List[Doc]) extends Doc
-case class Text(text: String) extends Doc
-case object LF extends Doc
-case class Code(text: String) extends Doc
-case class Heading(level: Int, text: String) extends Doc
-case class Link(uri: String, text: String) extends Doc
-case class Tag(text: String) extends Doc
-case class Target(text: String) extends Doc
+case class Para(contents: List[MultiLine]) extends Block
+case class Text(text: String) extends Inline
+case object LF extends MultiLine with Block
+case class Code(text: String) extends Block
+case class Heading(level: Int, contents: List[Inline]) extends Block
+case class Link(uri: String, text: String) extends Inline
+case class Tag(text: String) extends Inline
+case class Target(text: String) extends Inline

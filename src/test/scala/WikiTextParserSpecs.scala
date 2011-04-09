@@ -13,12 +13,12 @@ class WikiTextParserSpec extends WordSpec with ShouldMatchers {
 
   "parsing headers" should {
     "succeed when simple" in {
-      parser(parser.h1, "=I'm a Heading=") should equal(Heading(1, "I'm a Heading"))
-      parser(parser.h2, "==I'm a Heading==") should equal(Heading(2, "I'm a Heading"))
+      parser(parser.heading, "=I'm a Heading=") should equal(Heading(1, List(Text("I'm a Heading"))))
+      parser(parser.heading, "==I'm a Heading==") should equal(Heading(2, List(Text("I'm a Heading"))))
     }
 
     "succeed when followed by text" in {
-      parser(parser.document, "=Heading=\nother text\n") should equal(List(Heading(1, "Heading"), LF, Para(List(Text("other text"), LF))))
+      parser(parser.document, "=Heading=\nother text\n") should equal(List(Heading(1, List(Text("Heading"))), LF, Para(List(Text("other text"), LF))))
     }
   }
 
