@@ -35,13 +35,15 @@ class WikiTextParser extends Parsers {
 
   def para = rep1(not(code | heading | (lf ~ lf)) ~> multiline) ^^ { Para(_) }
 
-  def inline(limit: Parser[Any]): Parser[Inline] =  target | link | html | emphtext | boldtext | text(limit | link | target | html | emphtext | boldtext)
+  def inline(limit: Parser[Any]): Parser[Inline] =  target | link | html | emphtext | boldtext | codetext | text(limit | link | target | html | emphtext | boldtext | codetext)
 
   def multiline: Parser[MultiLine] = inline("\n") | lf
 
   def emphtext = "//" ~> rep1(not("//") ~> chr) <~ "//" ^^ { x => EmphText(x) }
 
   def boldtext = "**" ~> rep1(not("**") ~> chr) <~ "**" ^^ { x => BoldText(x) }
+
+  def codetext = "{{" ~> rep1(not("}}") ~> chr) <~ "}}" ^^ { x => CodeText(x) }
 
   def text(limit: Parser[Any]) = rep1(not(limit) ~> chr) ^^ { x => Text(x) }
 
@@ -99,6 +101,7 @@ object Doc {
     case Text(s) => s
     case EmphText(s) => s
     case BoldText(s) => s
+    case CodeText(s) => s
     case LF => "\n"
     case Link(u,s) => u
     case Target(s) => "#"+s
@@ -115,6 +118,7 @@ object Doc {
     case Text(s) => s
     case EmphText(s) => "//"+s+"//"
     case BoldText(s) => "**"+s+"**"
+    case CodeText(s) => "{{"+s+"}}"
     case LF => "\n"
     case Link(u,Some(s)) => "[["+u+"|"+s+"]]"
     case Link(u,None) => "[["+u+"]]"
@@ -141,6 +145,7 @@ object Doc {
     case Text(s) => s
     case EmphText(s) => "*"+s+"*"
     case BoldText(s) => "**"+s+"**"
+    case CodeText(s) => "``"+s+"``"
     case LF => "\n"
     case Link("toc", None) => ""
     case Link(u,Some(s)) => "`"+s+" <"+u+">`_"
@@ -173,6 +178,7 @@ case class Para(contents: List[MultiLine]) extends Block
 case class Text(text: String) extends Inline
 case class EmphText(text: String) extends Inline
 case class BoldText(text: String) extends Inline
+case class CodeText(text: String) extends Inline
 case class BList(contents: List[ListItem]) extends Block
 case class NList(contents: List[ListItem]) extends Block
 case class ListItem(contents: List[Inline]) extends Block
