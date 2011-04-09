@@ -26,8 +26,11 @@ class WikiTextParserSpec extends WordSpec with ShouldMatchers {
     "succeed when simple" in {
       parser(parser.link, "[[http://example.org|Example Link]]") should equal(Link("http://example.org", Some("Example Link")))
     }
+    "succeed when simple and only uri" in {
+      parser(parser.link, "[[http://example.org]]") should equal(Link("http://example.org", None))
+    }
     "succed when inline" in {
-      parser(parser.para, "This is a test of [[http://example.org|Example Link]] is a test") should equal(Para(List(Text("This is a test of "), Link("http://example.org", Some("Example Link")), Text(" is a test"))))
+      parser(parser.para, "This is a test of [[http://example.org|Example Link]] is a test and another [[http://example.org/the-example#page]]") should equal(Para(List(Text("This is a test of "), Link("http://example.org", Some("Example Link")), Text(" is a test and another "), Link("http://example.org/the-example#page", None))))
     }
   }
 
