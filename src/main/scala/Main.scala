@@ -54,7 +54,7 @@ class WikiTextParser extends Parsers {
 
   def tag = "[[" ~> rep1(not("]]") ~> chr) <~ "]]" ^^ { x => Tag(x) }
 
-  def chr = elem("chr", c => !c.isControl)
+  def chr = elem("chr", c => (!c.isControl || c == '\u0009'))
 
   def lf = '\n' ^^^ LF
 
